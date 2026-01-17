@@ -2,7 +2,7 @@ import os
 import time
 import requests
 
-URL = os.getenv("TARGET_URL", "https://example.com")
+URL = os.getenv("TARGET_URL", "https://github.com/1800797")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Railway Refresh Bot)"

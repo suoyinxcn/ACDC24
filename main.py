@@ -10,82 +10,74 @@ from keep_alive import keep_alive
 
 init(autoreset=True)
 
-status = "dnd"  # online/dnd/idle
-custom_status = ""  # Custom Status
+status = "dnd"  # online / dnd / idle
+custom_status = ""  # isi kalau mau
 
-usertoken = os.getenv("TOKEN")
-if not usertoken:
-    print(f"{Fore.WHITE}[{Fore.RED}-{Fore.WHITE}] Please add a token inside Secrets.")
+TOKEN = os.getenv("TOKEN")
+if not TOKEN:
+    print(f"{Fore.RED}Token tidak ditemukan.")
     sys.exit()
 
-headers = {"Authorization": usertoken, "Content-Type": "application/json"}
+headers = {"Authorization": TOKEN}
 
-validate = requests.get("https://canary.discordapp.com/api/v9/users/@me", headers=headers)
-if validate.status_code != 200:
-    print(f"{Fore.WHITE}[{Fore.RED}-{Fore.WHITE}] Your token might be invalid. Please check it again.")
+# Validate token
+r = requests.get("https://canary.discordapp.com/api/v9/users/@me", headers=headers)
+if r.status_code != 200:
+    print(f"{Fore.RED}Token invalid.")
     sys.exit()
 
-userinfo = requests.get("https://canary.discordapp.com/api/v9/users/@me", headers=headers).json()
-username = userinfo["username"]
-discriminator = userinfo["discriminator"]
-userid = userinfo["id"]
+user = r.json()
+username = user["username"]
+userid = user["id"]
 
-async def onliner(token, status):
-    async with websockets.connect("wss://gateway.discord.gg/?v=9&encoding=json") as ws:
-        start = json.loads(await ws.recv())
-        heartbeat = start["d"]["heartbeat_interval"]
+async def heartbeat_loop(ws, interval):
+    while True:
+        await asyncio.sleep(interval)
+        await ws.send(json.dumps({"op": 1, "d": None}))
 
-        auth = {
+async def onliner():
+    async with websockets.connect(
+        "wss://gateway.discord.gg/?v=9&encoding=json",
+        max_size=2**20  # 1MB aman
+    ) as ws:
+
+        hello = json.loads(await ws.recv())
+        interval = hello["d"]["heartbeat_interval"] / 1000
+
+        asyncio.create_task(heartbeat_loop(ws, interval))
+
+        identify = {
             "op": 2,
             "d": {
-                "token": token,
+                "token": TOKEN,
+                "intents": 0,
                 "properties": {
-                    "$os": "Windows 10",
-                    "$browser": "Google Chrome",
-                    "$device": "Windows",
+                    "$os": "Windows",
+                    "$browser": "Chrome",
+                    "$device": "PC"
                 },
-                "presence": {"status": status, "afk": False},
-            },
-        }
-        await ws.send(json.dumps(auth))
-
-        cstatus = {
-            "op": 3,
-            "d": {
-                "since": 0,
-                "activities": [
-                    {
+                "presence": {
+                    "status": status,
+                    "afk": False,
+                    "activities": [{
                         "type": 4,
                         "state": custom_status,
-                        "name": "Custom Status",
-                        "id": "custom",
-                                #Uncomment the below lines if you want an emoji in the status
-                                #"emoji": {
-                                    #"name": "emoji name",
-                                    #"id": "emoji id",
-                                    #"animated": False,
-                                #},
-                            }
-                        ],
-                "status": status,
-                "afk": False,
-            },
+                        "name": "Custom Status"
+                    }]
+                }
+            }
         }
-        await ws.send(json.dumps(cstatus))
 
-        online = {"op": 1, "d": "None"}
-        await asyncio.sleep(heartbeat / 1000)
-        await ws.send(json.dumps(online))
+        await ws.send(json.dumps(identify))
 
-async def run_onliner():
-    if platform.system() == "Windows":
-        os.system("cls")
-    else:
-        os.system("clear")
-    print(f"{Fore.WHITE}[{Fore.LIGHTGREEN_EX}+{Fore.WHITE}] Logged in as {Fore.LIGHTBLUE_EX}{username} {Fore.WHITE}({userid})!")
-    while True:
-        await onliner(usertoken, status)
-        await asyncio.sleep(50)
+        # keep connection alive
+        while True:
+            await ws.recv()
+
+async def main():
+    os.system("cls" if platform.system() == "Windows" else "clear")
+    print(f"{Fore.GREEN}Logged in as {username} ({userid})")
+    await onliner()
 
 keep_alive()
-asyncio.run(run_onliner())
+asyncio.run(main())
